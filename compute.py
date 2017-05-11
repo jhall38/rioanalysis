@@ -15,7 +15,6 @@ import json
 db = pymysql.connect("vpdb-cluster.cluster-craaqshtparg.us-west-2.rds.amazonaws.com","roadio","roadio2017","RoadIO")
 cur = db.cursor(pymysql.cursors.DictCursor)
 s3 = boto3.resource('s3')
-#stopsigns_folder = '/home/ubuntu/training/frames'
 
 def produce_dataset_by_video(vidID):
   s3_cli = boto3.client('s3')
@@ -75,10 +74,7 @@ def produce_dataset_by_video(vidID):
   zip_archive.close()
   with open(dataset_name, 'rb') as zi:
     s3.Bucket('roadio-datasets').put_object(Key=dataset_name, Body=zi)
-  
-  
-
-
+  os.remove(dataset_name)
 
 def analyze():
   stopsign_detector = dlib.simple_object_detector("detector.svm")
@@ -95,7 +91,6 @@ def analyze():
     db.close()
     exit()
   cap = cv2.VideoCapture(vid)
-  #for f in glob.glob(os.path.join(stopsigns_folder, "*.jpg")):
   img_num = 1
   frameRate = cap.get(5) #frame rate
   while(cap.isOpened()):
@@ -111,9 +106,7 @@ def analyze():
     if (frameId % math.floor(frameRate) != 0):
       print("not yet")
       continue
-    #win = dlib.image_window()
     print("Processing file: {}".format(img))
-    #img = io.imread(f)
     stop_dets = stopsign_detector(img)
     print("Number of stopsigns detected: {}".format(len(stop_dets)))
     r,g,b = cv2.split(img)
@@ -133,12 +126,7 @@ def analyze():
         print("Detection {}: Overall: {} Left: {} Top: {} Right: {} Bottom: {}".format(
         k, d, d.left(), d.top(), d.right(), d.bottom()))
         try:
-          cur.execute("INSERT INTO IMAGE_OBJECT (ImageID, ObjectID, BoundingBoxX, BoundingBoxY, BoundingBoxW, BoundingBoxH) VALUES (%s, %s, %s, %s, %s, %s)" % (imgID, StopsignObjectID, d.left(), d.top(), d.right(), d.bottom()))
-      
-        #win.clear_overlay()
-        #win.set_image(img)
-        #win.add_overlay(stop_dets)
-        #dlib.hit_enter_to_continue() 
+          cur.execute("INSERT INTO IMAGE_OBJECT (ImageID, ObjectID, BoundingBoxX, BoundingBoxY, BoundingBoxW, BoundingBoxH) VALUES (%s, %s, %s, %s, %s, %s)" % (imgID, StopsignObjectID, d.left(), d.top(), d.right(), d.bottom())) 
           db.commit()
         except e:
           db.rollback()
