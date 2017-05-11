@@ -1,0 +1,16 @@
+<?xml version='1.0' encoding='ISO-8859-1'?>
+<?xml-stylesheet type='text/xsl' href='image_metadata_stylesheet.xsl'?>
+<dataset>
+<name>imglab dataset</name>
+<comment>Created by imglab tool.</comment>
+<images>
+  <image file='stopsigns/P61Gr.jpg'>
+  </image>
+  <image file='stopsigns/stopsign1.jpeg'>
+  </image>
+  <image file='stopsigns/stopsign1new.jpg'>
+  </image>
+  <image file='stopsigns/trythis.png'>
+  </image>
+</images>
+</dataset>

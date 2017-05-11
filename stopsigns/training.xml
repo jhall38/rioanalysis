@@ -1,0 +1,50 @@
+<?xml version='1.0' encoding='ISO-8859-1'?>
+<?xml-stylesheet type='text/xsl' href='image_metadata_stylesheet.xsl'?>
+<dataset>
+<name>imglab dataset</name>
+<comment>Created by imglab tool.</comment>
+<images>
+  <image file='2367924218_92c3ce2a2e.jpg'>
+    <box top='187' left='141' width='136' height='182'/>
+  </image>
+  <image file='2900850954_ce111858c7.jpg'>
+    <box top='169' left='199' width='167' height='180'/>
+  </image>
+  <image file='3036294989_bbeb02375f.jpg'>
+    <box top='72' left='8' width='225' height='253'/>
+  </image>
+  <image file='3064314278_0278d1cffc.jpg'>
+    <box top='218' left='179' width='128' height='110'/>
+  </image>
+  <image file='3101256164_ef93b5d6cf.jpg'>
+    <box top='139' left='302' width='112' height='107'/>
+  </image>
+  <image file='3213648566_98e5bf2962 (1).jpg'>
+    <box top='163' left='184' width='127' height='149'/>
+  </image>
+  <image file='3213648566_98e5bf2962.jpg'>
+    <box top='174' left='190' width='114' height='136'/>
+  </image>
+  <image file='3783838333_00e961d57d.jpg'>
+    <box top='8' left='133' width='255' height='269'/>
+  </image>
+  <image file='451222550_1adb92b624.jpg'>
+    <box top='217' left='79' width='224' height='217'/>
+  </image>
+  <image file='sample_sc_streetsigns.jpg'>
+    <box top='172' left='29' width='54' height='79'/>
+  </image>
+  <image file='sn_hew_hum.jpg'>
+    <box top='74' left='81' width='123' height='126'/>
+  </image>
+  <image file='stop-245123_960_720.jpg'>
+    <box top='189' left='454' width='114' height='134'/>
+  </image>
+  <image file='stop-sign-744192_960_720.jpg'>
+    <box top='39' left='513' width='194' height='231'/>
+  </image>
+  <image file='stopsign1new.jpg'>
+    <box top='0' left='-1' width='52' height='52'/>
+  </image>
+</images>
+</dataset>
