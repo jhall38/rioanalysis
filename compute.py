@@ -29,7 +29,9 @@ def produce_dataset_by_video(vidID):
   dataset_id = cur.lastrowid
   dataset_name = "dataset" + str(dataset_id) + ".zip"
   zip_archive = zipfile.ZipFile(dataset_name, "w")
-  licence = 0
+  licence = 5.0
+  cur.execute("SELECT PostalZipCode FROM VIDEO WHERE VideoID = %s" % (vidID,))
+  postal_zip = cur.fetchone()["PostalZipCode"]
   data = dict()
   data["name"] = dataset_name
   data["images"] = list()
@@ -37,6 +39,7 @@ def produce_dataset_by_video(vidID):
   for row in cur.fetchall():
     image = dict()
     image["name"] = row["Name"]
+    image["postal_code"] = postal_zip
     cur.execute("SELECT * FROM IMAGE_OBJECT WHERE ImageID = %s" % (row["ImageID"],))
     if cur.rowcount != 0:
       image["objects"] = list()
@@ -57,7 +60,7 @@ def produce_dataset_by_video(vidID):
     this_img = open(row["Name"], "rb")
     zip_archive.writestr(row["Name"], this_img.read())
     os.remove(row["Name"])
-  data["licence"] = licence
+  data["licence_fee"] = licence
   try:
     cur.execute("UPDATE DATASET SET Name = '%s', LicenceFee = %s WHERE DatasetID = %s" % (dataset_name, licence, dataset_id))
     db.commit()
@@ -70,6 +73,9 @@ def produce_dataset_by_video(vidID):
   with open('data.json', 'rb') as fp:
     zip_archive.writestr('data.json', fp.read())
   zip_archive.close()
+  with open(dataset_name, 'rb') as zi:
+    s3.Bucket('roadio-datasets').put_object(Key=dataset_name, Body=zi)
+  
   
 
 
@@ -144,5 +150,5 @@ def analyze():
   cap.release()
   produce_dataset_by_video(vidID)
 
-#analyze()
-produce_dataset_by_video(6)
+analyze()
+#produce_dataset_by_video(6)
