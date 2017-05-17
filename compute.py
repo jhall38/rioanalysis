@@ -12,6 +12,7 @@ import zipfile
 import datetime
 import json
 import time
+from decimal import Decimal
 
 db = pymysql.connect("vpdb-cluster.cluster-craaqshtparg.us-west-2.rds.amazonaws.com","roadio","roadio2017","RoadIO")
 cur = db.cursor(pymysql.cursors.DictCursor)
@@ -19,6 +20,7 @@ s3 = boto3.resource('s3')
 sqs = boto3.resource('sqs')
 queue = sqs.get_queue_by_name(QueueName='video-processing')
 s3_cli = boto3.client('s3')
+dynamodb = boto3.resource('dynamodb')
 
 def produce_dataset_by_video(vidID):
   try:
@@ -32,8 +34,8 @@ def produce_dataset_by_video(vidID):
   dataset_name = "dataset" + str(dataset_id) + ".zip"
   zip_archive = zipfile.ZipFile(dataset_name, "w")
   licence = 5.0
-  cur.execute("SELECT PostalZipCode FROM VIDEO WHERE VideoID = %s" % (vidID,))
-  postal_zip = cur.fetchone()["PostalZipCode"]
+  cur.execute("SELECT CountryAbv FROM VIDEO WHERE VideoID = %s" % (vidID,))
+  country = cur.fetchone()["CountryAbv"]
   data = dict()
   data["name"] = dataset_name
   data["images"] = list()
@@ -41,7 +43,7 @@ def produce_dataset_by_video(vidID):
   for row in cur.fetchall():
     image = dict()
     image["name"] = row["Name"]
-    image["postal_code"] = postal_zip
+    image["country"] = country
     cur.execute("SELECT * FROM IMAGE_OBJECT WHERE ImageID = %s" % (row["ImageID"],))
     if cur.rowcount != 0:
       image["objects"] = list()
@@ -65,6 +67,13 @@ def produce_dataset_by_video(vidID):
   data["licence_fee"] = licence
   try:
     cur.execute("UPDATE DATASET SET Name = '%s', LicenceFee = %s WHERE DatasetID = %s" % (dataset_name, licence, dataset_id))
+    datasetTable = dynamodb.Table('dataset')
+    datasetTable.put_item(
+      Item={
+        'country': country,
+        'datasetName': dataset_name
+      }
+    ) 
     db.commit()
   except e:
     db.rollback()
@@ -79,13 +88,13 @@ def produce_dataset_by_video(vidID):
     s3.Bucket('roadio-datasets').put_object(Key=dataset_name, Body=zi)
   os.remove(dataset_name)
 
-def analyze(vidKey, userID):
+def analyze(vidKey, userID, country):
   stopsign_detector = dlib.simple_object_detector("detector.svm")
   s3_cli.download_file('driver-videos', userID + '/' + vidKey, vidKey)
   #vid = 'teststop.mp4'
   vidID = ""
   try:
-    cur.execute("INSERT INTO VIDEO (Name, Duration, PostalZipCode) VALUES ('%s',%s,'%s')" % (vidKey,3600,"98105"))
+    cur.execute("INSERT INTO VIDEO (Name, Duration, CountryAbv) VALUES ('%s',%s,'%s')" % (vidKey,0,country))
     db.commit()
     vidID = cur.lastrowid
     print("vidid" + str(vidID))
@@ -96,8 +105,11 @@ def analyze(vidKey, userID):
     exit()
   cap = cv2.VideoCapture(vidKey)
   img_num = 1
+  frame_num = 0
   frameRate = cap.get(5) #frame rate
+  totalValue = 1.00
   while(cap.isOpened()):
+    frame_num += 1
     frameId = cap.get(1) #current frame number
     ret, img = cap.read()
     try:
@@ -108,7 +120,6 @@ def analyze(vidKey, userID):
     if ret != True:
       break
     if (frameId % math.floor(frameRate) != 0):
-      print("not yet")
       continue
     print("Processing file: {}".format(img))
     stop_dets = stopsign_detector(img)
@@ -123,14 +134,17 @@ def analyze(vidKey, userID):
       db.commit()
       s3.Bucket('dashcam-images').put_object(Key=img_name, Body=data)
       imgID = cur.lastrowid
-      cur.execute("SELECT ObjectID FROM OBJECT WHERE Name = 'stopsign'")
-      StopsignObjectID = cur.fetchone()["ObjectID"]
+      cur.execute("SELECT ObjectID, Value FROM OBJECT WHERE Name = 'stopsign'")
+      cur_obj = cur.fetchone()
+      StopsignObjectID = cur_obj["ObjectID"]
+      obj_val = cur_obj["Value"]
       print("id" + str(StopsignObjectID))
       for k, d in enumerate(stop_dets):
         print("Detection {}: Overall: {} Left: {} Top: {} Right: {} Bottom: {}".format(
         k, d, d.left(), d.top(), d.right(), d.bottom()))
         try:
           cur.execute("INSERT INTO IMAGE_OBJECT (ImageID, ObjectID, BoundingBoxX, BoundingBoxY, BoundingBoxW, BoundingBoxH) VALUES (%s, %s, %s, %s, %s, %s)" % (imgID, StopsignObjectID, d.left(), d.top(), d.right(), d.bottom())) 
+          totalValue += float(obj_val)
           db.commit()
         except e:
           db.rollback()
@@ -141,17 +155,47 @@ def analyze(vidKey, userID):
     os.remove(img_name)
   cap.release()
   os.remove(vidKey)
+  paymentTable = dynamodb.Table('driverPayments')
+  paymentTable.put_item(
+    Item={
+      'userID': userID,
+      'timestamp': datetime.datetime.now().isoformat(),
+      'amount': Decimal(str(round(totalValue,2)))
+    }
+  )
+  duration = int(frame_num / frameRate)
+  try:
+    cur.execute("UPDATE VIDEO SET Duration = %s WHERE VideoID = %s" % (duration, int(vidID)))
+    videoTable = dynamodb.Table('videos')
+    videoTable.update_item(
+      Key={
+        'userID': userID,
+        'vidID': vidKey
+      },
+      UpdateExpression="set #dur = :dur",
+      ExpressionAttributeValues={
+        ':dur': duration
+      },
+      ExpressionAttributeNames = {
+        '#dur': 'duration'
+      }
+    )
+    db.commit()
+  except e:
+    db.rollback()
+    print(e)
   produce_dataset_by_video(vidID)
 
 #analyze()
 #produce_dataset_by_video(6)
 while True:
   print("Polling messages...")
-  for message in queue.receive_messages(MessageAttributeNames=['VidKey', 'UserID']):
+  for message in queue.receive_messages(MessageAttributeNames=['VidKey', 'UserID', 'CountryAbv']):
     vidKey = message.message_attributes.get('VidKey').get('StringValue')
     userID = message.message_attributes.get('UserID').get('StringValue')
+    country = message.message_attributes.get('CountryAbv').get('StringValue')
     print("proccessing %s by user %s" % (vidKey, userID)) 
-    analyze(vidKey, userID)
+    analyze(vidKey, userID, country)
     message.delete()
   time.sleep(5)
 
