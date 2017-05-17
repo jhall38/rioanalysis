@@ -11,13 +11,16 @@ import pymysql
 import zipfile
 import datetime
 import json
+import time
 
 db = pymysql.connect("vpdb-cluster.cluster-craaqshtparg.us-west-2.rds.amazonaws.com","roadio","roadio2017","RoadIO")
 cur = db.cursor(pymysql.cursors.DictCursor)
 s3 = boto3.resource('s3')
+sqs = boto3.resource('sqs')
+queue = sqs.get_queue_by_name(QueueName='video-processing')
+s3_cli = boto3.client('s3')
 
 def produce_dataset_by_video(vidID):
-  s3_cli = boto3.client('s3')
   try:
     cur.execute("INSERT INTO DATASET (DatetimeCreated) VALUES (NOW())")
     db.commit()
@@ -76,12 +79,13 @@ def produce_dataset_by_video(vidID):
     s3.Bucket('roadio-datasets').put_object(Key=dataset_name, Body=zi)
   os.remove(dataset_name)
 
-def analyze():
+def analyze(vidKey, userID):
   stopsign_detector = dlib.simple_object_detector("detector.svm")
-  vid = 'teststop.mp4'
+  s3_cli.download_file('driver-videos', userID + '/' + vidKey, vidKey)
+  #vid = 'teststop.mp4'
   vidID = ""
   try:
-    cur.execute("INSERT INTO VIDEO (Name, Duration, PostalZipCode) VALUES ('%s',%s,'%s')" % (vid,3600,"98105"))
+    cur.execute("INSERT INTO VIDEO (Name, Duration, PostalZipCode) VALUES ('%s',%s,'%s')" % (vidKey,3600,"98105"))
     db.commit()
     vidID = cur.lastrowid
     print("vidid" + str(vidID))
@@ -90,7 +94,7 @@ def analyze():
     db.rollback()
     db.close()
     exit()
-  cap = cv2.VideoCapture(vid)
+  cap = cv2.VideoCapture(vidKey)
   img_num = 1
   frameRate = cap.get(5) #frame rate
   while(cap.isOpened()):
@@ -136,7 +140,20 @@ def analyze():
       print(e)
     os.remove(img_name)
   cap.release()
+  os.remove(vidKey)
   produce_dataset_by_video(vidID)
 
-analyze()
+#analyze()
 #produce_dataset_by_video(6)
+while True:
+  print("Polling messages...")
+  for message in queue.receive_messages(MessageAttributeNames=['VidKey', 'UserID']):
+    vidKey = message.message_attributes.get('VidKey').get('StringValue')
+    userID = message.message_attributes.get('UserID').get('StringValue')
+    print("proccessing %s by user %s" % (vidKey, userID)) 
+    analyze(vidKey, userID)
+    message.delete()
+  time.sleep(5)
+
+  
+
