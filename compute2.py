@@ -74,7 +74,9 @@ def produce_dataset_by_video(vidID):
     datasetTable.put_item(
       Item={
         'country': country,
-        'datasetName': dataset_name
+        'datasetName': dataset_name,
+        'licence': licence,
+        'dateAdded': datetime.datetime.now().isoformat()
       }
     ) 
     db.commit()
@@ -132,6 +134,7 @@ def analyze(vidKey, userID, identityID, country):
   frame_num = 0
   frameRate = cap.get(5) #frame rate
   totalValue = 1.00
+  win = dlib.image_window()
   while(cap.isOpened()):
     frame_num += 1
     frameId = cap.get(1) #current frame number
@@ -148,6 +151,8 @@ def analyze(vidKey, userID, identityID, country):
     print("Processing file: {}".format(img))
     stop_dets = stopsign_detector(img)
     print("Number of stopsigns detected: {}".format(len(stop_dets)))
+    win.clear_overlay()
+    win.set_image(img)  
     r,g,b = cv2.split(img)
     img = cv2.merge([b,g,r])
     img_name = str(vidID) + '_' + str(frameId) + '.jpg'
@@ -166,6 +171,7 @@ def analyze(vidKey, userID, identityID, country):
       for k, d in enumerate(stop_dets):
         print("Detection {}: Overall: {} Left: {} Top: {} Right: {} Bottom: {}".format(
         k, d, d.left(), d.top(), d.right(), d.bottom()))
+        win.add_overlay(stop_dets)
         try:
           cur.execute("INSERT INTO IMAGE_OBJECT (ImageID, ObjectID, BoundingBoxX, BoundingBoxY, BoundingBoxW, BoundingBoxH) VALUES (%s, %s, %s, %s, %s, %s)" % (imgID, StopsignObjectID, d.left(), d.top(), d.right(), d.bottom())) 
           totalValue += float(obj_val)
