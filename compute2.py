@@ -15,6 +15,8 @@ import time
 from decimal import Decimal
 import smtplib
 from email.mime.text import MIMEText
+from skimage import io
+from skimage.draw import polygon_perimeter
 
 
 db = pymysql.connect("vpdb-cluster.cluster-craaqshtparg.us-west-2.rds.amazonaws.com","roadio","roadio2017","RoadIO")
@@ -36,7 +38,7 @@ def produce_dataset_by_video(vidID):
   dataset_id = cur.lastrowid
   dataset_name = "dataset" + str(dataset_id) + ".zip"
   zip_archive = zipfile.ZipFile(dataset_name, "w")
-  licence = 5.0
+  licence = 5.00
   cur.execute("SELECT CountryAbv FROM VIDEO WHERE VideoID = %s" % (vidID,))
   country = cur.fetchone()["CountryAbv"]
   data = dict()
@@ -69,13 +71,13 @@ def produce_dataset_by_video(vidID):
     os.remove(row["Name"])
   data["licence_fee"] = licence
   try:
-    cur.execute("UPDATE DATASET SET Name = '%s', LicenceFee = %s WHERE DatasetID = %s" % (dataset_name, licence, dataset_id))
+    cur.execute("UPDATE DATASET SET Name = '%s', LicenseFee = %s WHERE DatasetID = %s" % (dataset_name, licence, dataset_id))
     datasetTable = dynamodb.Table('dataset')
     datasetTable.put_item(
       Item={
         'country': country,
         'datasetName': dataset_name,
-        'licence': licence,
+        'price': Decimal(str(round(licence,2))),
         'dateAdded': datetime.datetime.now().isoformat()
       }
     ) 
@@ -152,12 +154,14 @@ def analyze(vidKey, userID, identityID, country):
     stop_dets = stopsign_detector(img)
     print("Number of stopsigns detected: {}".format(len(stop_dets)))
     win.clear_overlay()
-    win.set_image(img)  
+    win.set_image(img)
     r,g,b = cv2.split(img)
-    img = cv2.merge([b,g,r])
+    img_sv = cv2.merge([b,g,r])
     img_name = str(vidID) + '_' + str(frameId) + '.jpg'
-    cv2.imwrite(img_name, img)
+    #cv2.imshow('test', img)
+    cv2.imwrite(img_name, img_sv)
     data = open(img_name, 'rb')
+    #win.add_overlay((100,100,500,200), (120,0,0))
     try:
       cur.execute("INSERT INTO IMAGE (Name, VideoID) VALUES ('%s',%s)" % (img_name,vidID))
       db.commit()
@@ -171,7 +175,12 @@ def analyze(vidKey, userID, identityID, country):
       for k, d in enumerate(stop_dets):
         print("Detection {}: Overall: {} Left: {} Top: {} Right: {} Bottom: {}".format(
         k, d, d.left(), d.top(), d.right(), d.bottom()))
-        win.add_overlay(stop_dets)
+        rr,cc = polygon_perimeter([d.top(), d.top(), d.bottom(), d.bottom()],
+                             [d.right(), d.left(), d.left(), d.right()])
+        #win.add_overlay(stop_dets) 
+        temp = img
+        temp[rr, cc] = (0, 255, 0)
+        win.set_image(temp)
         try:
           cur.execute("INSERT INTO IMAGE_OBJECT (ImageID, ObjectID, BoundingBoxX, BoundingBoxY, BoundingBoxW, BoundingBoxH) VALUES (%s, %s, %s, %s, %s, %s)" % (imgID, StopsignObjectID, d.left(), d.top(), d.right(), d.bottom())) 
           totalValue += float(obj_val)
@@ -179,10 +188,12 @@ def analyze(vidKey, userID, identityID, country):
         except e:
           db.rollback()
           print(e)
-    except e:
+    except:
       db.rollback()
-      print(e)
+      print("error")
     os.remove(img_name)
+    #if cv2.waitKey(1) & 0xFF == ord('q'):
+    #  break
   cap.release()
   os.remove(vidKey)
   paymentTable = dynamodb.Table('driverPayments')
